@@ -1,1 +1,4 @@
 /.idea/
+/azure_function/bin/*
+/coverage.out
+/.golangci.yaml

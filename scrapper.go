@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	az "github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
@@ -58,7 +59,9 @@ func NewScrapper(cred az.TokenCredential, sub string, opts ...OptionsFunc) (*Scr
 }
 
 func (s *Scrapper) Run() error {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		return s.ListResourceGroups(ctx, consoleHandler[resource.ResourceGroup])
@@ -73,10 +76,7 @@ func (s *Scrapper) Run() error {
 		return s.ListDiskEncryptionSets(ctx, consoleHandler[compute.DiskEncryptionSet])
 	})
 
-	if err := g.Wait(); err != nil {
-		return err
-	}
-	return nil
+	return g.Wait()
 }
 
 func (s *Scrapper) ListResourceGroups(ctx context.Context, pageHandler pageHandler[resource.ResourceGroup]) error {

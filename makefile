@@ -25,7 +25,7 @@ pre-release: fmt vet test
 .PHONE: build
 ## Builds the binary for release
 build: pre-release
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags' -a -o scrapper
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags' -a -o azure_function/bin/az_scrapper
 	upx --brute scrapper
 
 .PHONE: deploy
