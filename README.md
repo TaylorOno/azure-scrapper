@@ -26,6 +26,6 @@ az storage account create --name azscrapperstorage --location eastus --resource-
 
 Creating a functionapp
 ```bash
-az functionapp create -g az-scrapper-rg -n az_scrapper -s azscrapperstorage --consumption-plan-location eastus --runtime custom --disable-app-insights
+az functionapp create -g az-scrapper-rg -n az-scrapper -s azscrapperstorage --consumption-plan-location eastus --runtime custom --functions-version 4 --disable-app-insights
 ```
-> NOTE: using flag `--functions-version 4` results in an error `The parameter WEBSITE_CONTENTSHARE has an invalid value.` there does not appear to be any documentation about additional parameters required at this time.
+> NOTE: functionapp name must contain only uppercase, lowercase numbers and dashes, or you will get the exception `The parameter WEBSITE_CONTENTSHARE has an invalid value.`
