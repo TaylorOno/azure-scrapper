@@ -86,10 +86,8 @@ func (s *Scrapper) ListResourceGroups(ctx context.Context, pageHandler pageHandl
 		if err != nil {
 			return fmt.Errorf("failed to advance page: %w", err)
 		}
-		for _, v := range page.Value {
-			if err = pageHandler(v); err != nil {
-				return fmt.Errorf("failed to process page: %w", err)
-			}
+		if err = processPage(page.Value, err, pageHandler); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -102,10 +100,8 @@ func (s *Scrapper) ListProviders(ctx context.Context, pageHandler pageHandler[re
 		if err != nil {
 			return fmt.Errorf("failed to advance page: %w", err)
 		}
-		for _, v := range page.Value {
-			if err = pageHandler(v); err != nil {
-				return fmt.Errorf("failed to process page: %w", err)
-			}
+		if err = processPage(page.Value, err, pageHandler); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -118,10 +114,8 @@ func (s *Scrapper) ListVirtualNetworks(ctx context.Context, pageHandler pageHand
 		if err != nil {
 			return fmt.Errorf("failed to advance page: %w", err)
 		}
-		for _, v := range page.Value {
-			if err = pageHandler(v); err != nil {
-				return fmt.Errorf("failed to process page: %w", err)
-			}
+		if err = processPage(page.Value, err, pageHandler); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -134,10 +128,17 @@ func (s *Scrapper) ListDiskEncryptionSets(ctx context.Context, pageHandler pageH
 		if err != nil {
 			return fmt.Errorf("failed to advance page: %w", err)
 		}
-		for _, v := range page.Value {
-			if err = pageHandler(v); err != nil {
-				return fmt.Errorf("failed to process page: %w", err)
-			}
+		if err = processPage(page.Value, err, pageHandler); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func processPage[T any](page []*T, err error, pageHandler pageHandler[T]) error {
+	for _, v := range page {
+		if err = pageHandler(v); err != nil {
+			return fmt.Errorf("failed to process page: %w", err)
 		}
 	}
 	return nil
