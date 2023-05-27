@@ -6,7 +6,7 @@
   },
   "customHandler": {
     "description": {
-      "defaultExecutablePath": "bin/az_scrapper",
+      "defaultExecutablePath": "bin/az-scrapper",
       "workingDirectory": "",
       "arguments": []
     }
