@@ -24,14 +24,20 @@ pre-release: fmt vet test
 
 .PHONE: build
 ## Builds the binary for release
-build: pre-release
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags' -a -o azure_function/bin/az_scrapper
-	upx --brute scrapper
+build:
+	go build -ldflags='-w -s -extldflags' -a -o azure_function/bin/az_scrapper
+
+.PHONE: start
+## Start local development instance using azure function runtime
+start: build
+	cd azure_function && func start
 
 .PHONE: deploy
-## Builds the binary for release
-deploy: build
-
+## Deploys the function to an existing functionapp
+deploy: pre-release
+	set CGO_ENABLED=0 && set GOOS=windows && set GOARCH=amd64 go build -ldflags='-w -s -extldflags' -a -o azure_function/bin/az_scrapper
+	upx --brute azure_function/bin/az_scrapper
+	cd azure_function && func azure functionapp publish az_scrapper
 
 .PHONY: help
 ## help: Prints this help message
