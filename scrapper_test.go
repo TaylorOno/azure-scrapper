@@ -20,47 +20,48 @@ func TestNewScraper(t *testing.T) {
 	tests := []struct {
 		name          string
 		withFactories []OptionsFunc
-		want          func(*Scrapper, error)
+		want          func(*testing.T, *Scrapper, error)
 	}{
 		{
 			name:          "successful creation",
 			withFactories: []OptionsFunc{},
-			want: func(scrapper *Scrapper, err error) {
+			want: func(t *testing.T, scrapper *Scrapper, err error) {
 				assert.NoError(t, err)
 			},
 		},
 		{
 			name:          "fails if resource group client factory fails",
 			withFactories: []OptionsFunc{WithResourceGroupsFactory(brokenFactory[ResourceGroupsPager])},
-			want: func(scrapper *Scrapper, err error) {
+			want: func(t *testing.T, scrapper *Scrapper, err error) {
 				assert.Error(t, err, "failed to create client")
 			},
 		},
 		{
 			name:          "fails if provider client factory fails",
 			withFactories: []OptionsFunc{WithProvidersFactory(brokenFactory[ProvidersPager])},
-			want: func(scrapper *Scrapper, err error) {
+			want: func(t *testing.T, scrapper *Scrapper, err error) {
 				assert.Error(t, err, "failed to create client")
 			},
 		},
 		{
 			name:          "fails if virtual network client factory fails",
 			withFactories: []OptionsFunc{WithVirtualNetworksFactory(brokenFactory[VirtualNetworkPager])},
-			want: func(scrapper *Scrapper, err error) {
+			want: func(t *testing.T, scrapper *Scrapper, err error) {
 				assert.EqualError(t, err, "failed to create client")
 			},
 		},
 		{
 			name:          "fails if disk encryption set client factory fails",
 			withFactories: []OptionsFunc{WithDiskEncryptionSetFactory(brokenFactory[DiskEncryptionSetPager])},
-			want: func(scrapper *Scrapper, err error) {
+			want: func(t *testing.T, scrapper *Scrapper, err error) {
 				assert.EqualError(t, err, "failed to create client")
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.want(NewScrapper(testCred(), "not-important", tt.withFactories...))
+			scrapper, err := NewScrapper(testCred(), "not-important", tt.withFactories...)
+			tt.want(t, scrapper, err)
 		})
 	}
 }
@@ -75,7 +76,7 @@ func TestScrapper_Run(t *testing.T) {
 	tests := []struct {
 		name    string
 		clients clients
-		want    func(error)
+		want    func(t *testing.T, err error)
 	}{
 		{
 			name: "Successful execution",
@@ -93,7 +94,7 @@ func TestScrapper_Run(t *testing.T) {
 					item: &compute.DiskEncryptionSetsClientListResponse{},
 				},
 			},
-			want: func(err error) {
+			want: func(t *testing.T, err error) {
 				assert.NoError(t, err)
 			},
 		},
@@ -106,143 +107,219 @@ func TestScrapper_Run(t *testing.T) {
 				networksClient:          tt.clients.networksClient,
 				diskEncryptionSetClient: tt.clients.diskEncryptionSetsClient,
 			}
-			tt.want(s.Run())
+			tt.want(t, s.Run())
 		})
 	}
 }
 
 func TestScrapper_ListResourceGroups(t *testing.T) {
 	tests := []struct {
-		name          string
-		withFactories []OptionsFunc
-		want          func(error)
+		name                  string
+		resourceGroupsFactory ResourceGroupClientFactory
+		handlerError          error
+		want                  func(t *testing.T, err error)
 	}{
 		{
 			name: "resource group iteration succeeds",
-			withFactories: []OptionsFunc{WithResourceGroupsFactory(func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ResourceGroupsPager, error) {
-				return NewPager[resource.ResourceGroupsClientListOptions, resource.ResourceGroupsClientListResponse]{item: &resource.ResourceGroupsClientListResponse{}}, nil
-			})},
-			want: func(err error) {
+			resourceGroupsFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ResourceGroupsPager, error) {
+				return NewPager[resource.ResourceGroupsClientListOptions, resource.ResourceGroupsClientListResponse]{item: &resource.ResourceGroupsClientListResponse{
+					ResourceGroupListResult: resource.ResourceGroupListResult{
+						Value: []*resource.ResourceGroup{{}},
+					},
+				}}, nil
+			},
+			want: func(t *testing.T, err error) {
 				assert.NoError(t, err)
 			},
 		},
 		{
+			name: "resource group handler fails",
+			resourceGroupsFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ResourceGroupsPager, error) {
+				return NewPager[resource.ResourceGroupsClientListOptions, resource.ResourceGroupsClientListResponse]{item: &resource.ResourceGroupsClientListResponse{
+					ResourceGroupListResult: resource.ResourceGroupListResult{
+						Value: []*resource.ResourceGroup{{}},
+					},
+				}}, nil
+			},
+			handlerError: errors.New("failed to handle resource group"),
+			want: func(t *testing.T, err error) {
+				assert.Error(t, err)
+			},
+		},
+		{
 			name: "resource group iteration fails",
-			withFactories: []OptionsFunc{WithResourceGroupsFactory(func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ResourceGroupsPager, error) {
+			resourceGroupsFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ResourceGroupsPager, error) {
 				return FailPager[resource.ResourceGroupsClientListOptions, resource.ResourceGroupsClientListResponse]{}, nil
-			})},
-			want: func(err error) {
+			},
+			want: func(t *testing.T, err error) {
 				assert.Error(t, err)
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scraper, err := NewScrapper(testCred(), "not-important", tt.withFactories...)
+			scraper, err := NewScrapper(testCred(), "not-important", WithResourceGroupsFactory(tt.resourceGroupsFactory))
 			require.NoError(t, err)
-			tt.want(scraper.ListResourceGroups(context.Background(), func(r *resource.ResourceGroup) error { return nil }))
+			tt.want(t, scraper.ListResourceGroups(context.Background(), func(r *resource.ResourceGroup) error { return tt.handlerError }))
 		})
 	}
 }
 
 func TestScrapper_ListProviders(t *testing.T) {
 	tests := []struct {
-		name          string
-		withFactories []OptionsFunc
-		want          func(error)
+		name             string
+		providersFactory ProvidersClientFactory
+		handlerError     error
+		want             func(t *testing.T, err error)
 	}{
 		{
 			name: "provider iteration succeeds",
-			withFactories: []OptionsFunc{WithProvidersFactory(func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ProvidersPager, error) {
-				return NewPager[resource.ProvidersClientListOptions, resource.ProvidersClientListResponse]{item: &resource.ProvidersClientListResponse{}}, nil
-			})},
-			want: func(err error) {
+			providersFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ProvidersPager, error) {
+				return NewPager[resource.ProvidersClientListOptions, resource.ProvidersClientListResponse]{item: &resource.ProvidersClientListResponse{
+					ProviderListResult: resource.ProviderListResult{
+						Value: []*resource.Provider{{}},
+					},
+				}}, nil
+			},
+			want: func(t *testing.T, err error) {
 				assert.NoError(t, err)
 			},
 		},
 		{
+			name: "provider handler fails",
+			providersFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ProvidersPager, error) {
+				return NewPager[resource.ProvidersClientListOptions, resource.ProvidersClientListResponse]{item: &resource.ProvidersClientListResponse{
+					ProviderListResult: resource.ProviderListResult{
+						Value: []*resource.Provider{{}},
+					},
+				}}, nil
+			},
+			handlerError: errors.New("failed to handle provider"),
+			want: func(t *testing.T, err error) {
+				assert.Error(t, err)
+			},
+		},
+		{
 			name: "provider iteration fails",
-			withFactories: []OptionsFunc{WithProvidersFactory(func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ProvidersPager, error) {
+			providersFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ProvidersPager, error) {
 				return FailPager[resource.ProvidersClientListOptions, resource.ProvidersClientListResponse]{}, nil
-			})},
-			want: func(err error) {
+			},
+			want: func(t *testing.T, err error) {
 				assert.Error(t, err)
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scraper, err := NewScrapper(testCred(), "not-important", tt.withFactories...)
+			scraper, err := NewScrapper(testCred(), "not-important", WithProvidersFactory(tt.providersFactory))
 			require.NoError(t, err)
-			tt.want(scraper.ListProviders(context.Background(), func(r *resource.Provider) error { return nil }))
+			tt.want(t, scraper.ListProviders(context.Background(), func(r *resource.Provider) error { return tt.handlerError }))
 		})
 	}
 }
 
 func TestScrapper_ListVirtualNetworks(t *testing.T) {
 	tests := []struct {
-		name          string
-		withFactories []OptionsFunc
-		want          func(error)
+		name                   string
+		virtualNetworksFactory VirtualNetworkClientFactory
+		handlerError           error
+		want                   func(t *testing.T, err error)
 	}{
 		{
 			name: "virtual network iteration succeeds",
-			withFactories: []OptionsFunc{WithVirtualNetworksFactory(func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (VirtualNetworkPager, error) {
-				return NewPager[network.VirtualNetworksClientListAllOptions, network.VirtualNetworksClientListAllResponse]{item: &network.VirtualNetworksClientListAllResponse{}}, nil
-			})},
-			want: func(err error) {
+			virtualNetworksFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (VirtualNetworkPager, error) {
+				return NewPager[network.VirtualNetworksClientListAllOptions, network.VirtualNetworksClientListAllResponse]{item: &network.VirtualNetworksClientListAllResponse{
+					VirtualNetworkListResult: network.VirtualNetworkListResult{
+						Value: []*network.VirtualNetwork{{}},
+					},
+				}}, nil
+			},
+			want: func(t *testing.T, err error) {
 				assert.NoError(t, err)
 			},
 		},
 		{
+			name: "virtual network handler fails",
+			virtualNetworksFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (VirtualNetworkPager, error) {
+				return NewPager[network.VirtualNetworksClientListAllOptions, network.VirtualNetworksClientListAllResponse]{item: &network.VirtualNetworksClientListAllResponse{
+					VirtualNetworkListResult: network.VirtualNetworkListResult{
+						Value: []*network.VirtualNetwork{{}},
+					},
+				}}, nil
+			},
+			handlerError: errors.New("failed to handle virtual network"),
+			want: func(t *testing.T, err error) {
+				assert.Error(t, err)
+			},
+		},
+		{
 			name: "virtual network iteration fails",
-			withFactories: []OptionsFunc{WithVirtualNetworksFactory(func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (VirtualNetworkPager, error) {
+			virtualNetworksFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (VirtualNetworkPager, error) {
 				return FailPager[network.VirtualNetworksClientListAllOptions, network.VirtualNetworksClientListAllResponse]{}, nil
-			})},
-			want: func(err error) {
+			},
+			want: func(t *testing.T, err error) {
 				assert.Error(t, err)
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scraper, err := NewScrapper(testCred(), "not-important", tt.withFactories...)
+			scraper, err := NewScrapper(testCred(), "not-important", WithVirtualNetworksFactory(tt.virtualNetworksFactory))
 			require.NoError(t, err)
-			tt.want(scraper.ListVirtualNetworks(context.Background(), func(r *network.VirtualNetwork) error { return nil }))
+			tt.want(t, scraper.ListVirtualNetworks(context.Background(), func(r *network.VirtualNetwork) error { return tt.handlerError }))
 		})
 	}
 }
 
 func TestScrapper_ListDiskEncryptionSets(t *testing.T) {
 	tests := []struct {
-		name          string
-		withFactories []OptionsFunc
-		want          func(error)
+		name                  string
+		diskEncryptionFactory DiskEncryptionSetClientFactory
+		handlerError          error
+		expect                func(t *testing.T, err error)
 	}{
 		{
 			name: "disk encryption set iteration succeeds",
-			withFactories: []OptionsFunc{WithDiskEncryptionSetFactory(func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (DiskEncryptionSetPager, error) {
-				return NewPager[compute.DiskEncryptionSetsClientListOptions, compute.DiskEncryptionSetsClientListResponse]{item: &compute.DiskEncryptionSetsClientListResponse{}}, nil
-			})},
-			want: func(err error) {
+			diskEncryptionFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (DiskEncryptionSetPager, error) {
+				return NewPager[compute.DiskEncryptionSetsClientListOptions, compute.DiskEncryptionSetsClientListResponse]{item: &compute.DiskEncryptionSetsClientListResponse{
+					DiskEncryptionSetList: compute.DiskEncryptionSetList{
+						Value: []*compute.DiskEncryptionSet{{}},
+					},
+				}}, nil
+			},
+			expect: func(t *testing.T, err error) {
 				assert.NoError(t, err)
 			},
 		},
 		{
+			name: "disk encryption handler fails",
+			diskEncryptionFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (DiskEncryptionSetPager, error) {
+				return NewPager[compute.DiskEncryptionSetsClientListOptions, compute.DiskEncryptionSetsClientListResponse]{item: &compute.DiskEncryptionSetsClientListResponse{
+					DiskEncryptionSetList: compute.DiskEncryptionSetList{
+						Value: []*compute.DiskEncryptionSet{{}},
+					},
+				}}, nil
+			},
+			handlerError: errors.New("failed to handle disk encryption set"),
+			expect: func(t *testing.T, err error) {
+				assert.Error(t, err)
+			},
+		},
+		{
 			name: "disk encryption set iteration fails",
-			withFactories: []OptionsFunc{WithDiskEncryptionSetFactory(func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (DiskEncryptionSetPager, error) {
+			diskEncryptionFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (DiskEncryptionSetPager, error) {
 				return FailPager[compute.DiskEncryptionSetsClientListOptions, compute.DiskEncryptionSetsClientListResponse]{}, nil
-			})},
-			want: func(err error) {
+			},
+			expect: func(t *testing.T, err error) {
 				assert.Error(t, err)
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scraper, err := NewScrapper(testCred(), "not-important", tt.withFactories...)
+			scraper, err := NewScrapper(testCred(), "not-important", WithDiskEncryptionSetFactory(tt.diskEncryptionFactory))
 			require.NoError(t, err)
-			tt.want(scraper.ListDiskEncryptionSets(context.Background(), func(r *compute.DiskEncryptionSet) error { return nil }))
+			tt.expect(t, scraper.ListDiskEncryptionSets(context.Background(), func(r *compute.DiskEncryptionSet) error { return tt.handlerError }))
 		})
 	}
 }
