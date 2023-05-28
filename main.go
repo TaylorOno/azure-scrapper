@@ -20,7 +20,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }
 
-func scrape(w http.ResponseWriter, r *http.Request) {
+func scrape(w http.ResponseWriter, _ *http.Request) {
 	resp := InvokeResponse{
 		Outputs:     map[string]resData{"res": {}},
 		Logs:        []string{},
@@ -72,5 +72,9 @@ func writeJSON(w http.ResponseWriter, result InvokeResponse, code int) {
 	responseJson, _ := json.Marshal(result)
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(responseJson)
+	_, err := w.Write(responseJson)
+	if err != nil {
+		log.Printf("failed to write response: %v", err)
+		return
+	}
 }

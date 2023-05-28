@@ -328,7 +328,7 @@ func testCred() az.TokenCredential {
 	return &azidentity.DefaultAzureCredential{}
 }
 
-func brokenFactory[T any](sub string, cred az.TokenCredential, opts *arm.ClientOptions) (T, error) {
+func brokenFactory[T any](_ string, _ az.TokenCredential, _ *arm.ClientOptions) (T, error) {
 	return *new(T), errors.New("failed to create client")
 }
 
@@ -336,7 +336,7 @@ type NewPager[O any, T any] struct {
 	item *T
 }
 
-func (n NewPager[O, T]) NewListPager(opts *O) *rt.Pager[T] {
+func (n NewPager[O, T]) NewListPager(_ *O) *rt.Pager[T] {
 	return singleItemPager[T](n.item)
 }
 
@@ -354,7 +354,7 @@ func singleItemPager[T any](item *T) *rt.Pager[T] {
 type FailPager[O any, T any] struct {
 }
 
-func (f FailPager[O, T]) NewListPager(opts *O) *rt.Pager[T] {
+func (f FailPager[O, T]) NewListPager(_ *O) *rt.Pager[T] {
 	return errorPager[T]()
 }
 
