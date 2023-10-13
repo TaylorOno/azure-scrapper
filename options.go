@@ -6,6 +6,8 @@ type Options struct {
 	providersClientFactory         ProvidersClientFactory
 	virtualNetworkClientFactory    VirtualNetworkClientFactory
 	diskEncryptionSetClientFactory DiskEncryptionSetClientFactory
+	clusterClientFactory           ClusterClientFactory
+	nodePoolClientFactory          NodePoolClientFactory
 }
 
 // DefaultOptions initialize scrapper to user the default client factories from the azure-go-sdk.
@@ -15,6 +17,8 @@ func DefaultOptions() *Options {
 		providersClientFactory:         defaultProvidersClientFactory,
 		virtualNetworkClientFactory:    defaultNetworkClientFactory,
 		diskEncryptionSetClientFactory: defaultDiskEncryptionSetClientFactory,
+		clusterClientFactory:           defaultClusterClientFactory,
+		nodePoolClientFactory:          defaultNodePoolClientFactory,
 	}
 }
 
@@ -41,5 +45,17 @@ func WithVirtualNetworksFactory(f VirtualNetworkClientFactory) OptionsFunc {
 func WithDiskEncryptionSetFactory(f DiskEncryptionSetClientFactory) OptionsFunc {
 	return func(opt *Options) {
 		opt.diskEncryptionSetClientFactory = f
+	}
+}
+
+func WithClusterFactory(f ClusterClientFactory) OptionsFunc {
+	return func(opt *Options) {
+		opt.clusterClientFactory = f
+	}
+}
+
+func WithNodePoolFactory(f NodePoolClientFactory) OptionsFunc {
+	return func(opt *Options) {
+		opt.nodePoolClientFactory = f
 	}
 }

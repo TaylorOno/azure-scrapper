@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v2"
 	"time"
 
 	az "github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -19,6 +20,8 @@ type Scrapper struct {
 	providersClient         ProvidersPager
 	networksClient          VirtualNetworkPager
 	diskEncryptionSetClient DiskEncryptionSetPager
+	clusterClient           ClusterPager
+	nodePoolClient          NodePoolPager
 }
 
 // NewScrapper initialize the scrapper using the provided credentials for a single subscription.
@@ -50,11 +53,23 @@ func NewScrapper(cred az.TokenCredential, sub string, opts ...OptionsFunc) (*Scr
 		return nil, err
 	}
 
+	cc, err := o.clusterClientFactory(sub, cred, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	npc, err := o.nodePoolClientFactory(sub, cred, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Scrapper{
 		resourceGroupClient:     rgc,
 		providersClient:         pc,
 		networksClient:          nc,
 		diskEncryptionSetClient: desc,
+		clusterClient:           cc,
+		nodePoolClient:          npc,
 	}, nil
 }
 
@@ -74,6 +89,9 @@ func (s *Scrapper) Run() error {
 	})
 	g.Go(func() error {
 		return s.ListDiskEncryptionSets(ctx, consoleHandler[compute.DiskEncryptionSet])
+	})
+	g.Go(func() error {
+		return s.ListClusters(ctx, consoleHandler[armcontainerservice.ManagedCluster])
 	})
 
 	return g.Wait()
@@ -123,6 +141,20 @@ func (s *Scrapper) ListVirtualNetworks(ctx context.Context, pageHandler pageHand
 
 func (s *Scrapper) ListDiskEncryptionSets(ctx context.Context, pageHandler pageHandler[compute.DiskEncryptionSet]) error {
 	pager := s.diskEncryptionSetClient.NewListPager(nil)
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to advance page: %w", err)
+		}
+		if err = processPage(page.Value, err, pageHandler); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Scrapper) ListClusters(ctx context.Context, pageHandler pageHandler[armcontainerservice.ManagedCluster]) error {
+	pager := s.clusterClient.NewListPager(nil)
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {

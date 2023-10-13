@@ -10,6 +10,7 @@ import (
 	rt "github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	container "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v2"
 	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v2"
 	resource "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/stretchr/testify/assert"
@@ -57,6 +58,20 @@ func TestNewScraper(t *testing.T) {
 				assert.EqualError(t, err, "failed to create client")
 			},
 		},
+		{
+			name:          "fails if cluster client factory fails",
+			withFactories: []OptionsFunc{WithClusterFactory(brokenFactory[ClusterPager])},
+			want: func(t *testing.T, scrapper *Scrapper, err error) {
+				assert.EqualError(t, err, "failed to create client")
+			},
+		},
+		{
+			name:          "fails if node pool client factory fails",
+			withFactories: []OptionsFunc{WithNodePoolFactory(brokenFactory[NodePoolPager])},
+			want: func(t *testing.T, scrapper *Scrapper, err error) {
+				assert.EqualError(t, err, "failed to create client")
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -72,6 +87,7 @@ func TestScrapper_Run(t *testing.T) {
 		providersClient          ProvidersPager
 		networksClient           VirtualNetworkPager
 		diskEncryptionSetsClient DiskEncryptionSetPager
+		clusterClient            ClusterPager
 	}
 	tests := []struct {
 		name    string
@@ -93,6 +109,9 @@ func TestScrapper_Run(t *testing.T) {
 				diskEncryptionSetsClient: NewPager[compute.DiskEncryptionSetsClientListOptions, compute.DiskEncryptionSetsClientListResponse]{
 					item: &compute.DiskEncryptionSetsClientListResponse{},
 				},
+				clusterClient: NewPager[container.ManagedClustersClientListOptions, container.ManagedClustersClientListResponse]{
+					item: &container.ManagedClustersClientListResponse{},
+				},
 			},
 			want: func(t *testing.T, err error) {
 				assert.NoError(t, err)
@@ -106,6 +125,7 @@ func TestScrapper_Run(t *testing.T) {
 				providersClient:         tt.clients.providersClient,
 				networksClient:          tt.clients.networksClient,
 				diskEncryptionSetClient: tt.clients.diskEncryptionSetsClient,
+				clusterClient:           tt.clients.clusterClient,
 			}
 			tt.want(t, s.Run())
 		})
@@ -320,6 +340,59 @@ func TestScrapper_ListDiskEncryptionSets(t *testing.T) {
 			scraper, err := NewScrapper(testCred(), "not-important", WithDiskEncryptionSetFactory(tt.diskEncryptionFactory))
 			require.NoError(t, err)
 			tt.expect(t, scraper.ListDiskEncryptionSets(context.Background(), func(r *compute.DiskEncryptionSet) error { return tt.handlerError }))
+		})
+	}
+}
+
+func TestScrapper_ListClusters(t *testing.T) {
+	tests := []struct {
+		name                 string
+		clusterClientFactory ClusterClientFactory
+		handlerError         error
+		expect               func(t *testing.T, err error)
+	}{
+		{
+			name: "disk encryption set iteration succeeds",
+			clusterClientFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ClusterPager, error) {
+				return NewPager[container.ManagedClustersClientListOptions, container.ManagedClustersClientListResponse]{item: &container.ManagedClustersClientListResponse{
+					ManagedClusterListResult: container.ManagedClusterListResult{
+						Value: []*container.ManagedCluster{{}},
+					},
+				}}, nil
+			},
+			expect: func(t *testing.T, err error) {
+				assert.NoError(t, err)
+			},
+		},
+		{
+			name: "disk encryption handler fails",
+			clusterClientFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ClusterPager, error) {
+				return NewPager[container.ManagedClustersClientListOptions, container.ManagedClustersClientListResponse]{item: &container.ManagedClustersClientListResponse{
+					ManagedClusterListResult: container.ManagedClusterListResult{
+						Value: []*container.ManagedCluster{{}},
+					},
+				}}, nil
+			},
+			handlerError: errors.New("failed to handle disk encryption set"),
+			expect: func(t *testing.T, err error) {
+				assert.Error(t, err)
+			},
+		},
+		{
+			name: "disk encryption set iteration fails",
+			clusterClientFactory: func(sub string, cred az.TokenCredential, opts *arm.ClientOptions) (ClusterPager, error) {
+				return FailPager[container.ManagedClustersClientListOptions, container.ManagedClustersClientListResponse]{}, nil
+			},
+			expect: func(t *testing.T, err error) {
+				assert.Error(t, err)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scraper, err := NewScrapper(testCred(), "not-important", WithClusterFactory(tt.clusterClientFactory))
+			require.NoError(t, err)
+			tt.expect(t, scraper.ListClusters(context.Background(), func(r *container.ManagedCluster) error { return tt.handlerError }))
 		})
 	}
 }
