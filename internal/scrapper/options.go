@@ -1,4 +1,4 @@
-package main
+package scrapper
 
 // Options holds factory methods used to create clients that are passed to the scrapper.
 type Options struct {

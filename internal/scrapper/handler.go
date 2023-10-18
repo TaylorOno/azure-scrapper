@@ -1,4 +1,4 @@
-package main
+package scrapper
 
 import (
 	"encoding/json"
@@ -10,17 +10,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 )
 
-func main() {
-	listenAddr := ":9090"
-	if val, ok := os.LookupEnv("FUNCTIONS_CUSTOMHANDLER_PORT"); ok {
-		listenAddr = ":" + val
-	}
-	http.HandleFunc("/scrapper", scrape)
-	log.Printf("About to listen on %s. Go to https://127.0.0.1%s/", listenAddr, listenAddr)
-	log.Fatal(http.ListenAndServe(listenAddr, nil))
-}
-
-func scrape(w http.ResponseWriter, _ *http.Request) {
+func Handle(w http.ResponseWriter, _ *http.Request) {
 	resp := InvokeResponse{
 		Outputs:     map[string]resData{"res": {}},
 		Logs:        []string{},
@@ -50,10 +40,6 @@ func scrape(w http.ResponseWriter, _ *http.Request) {
 
 	writeJSON(w, resp, http.StatusOK)
 	return
-}
-
-func consoleHandler[T any](t *T) error {
-	return json.NewEncoder(os.Stdout).Encode(t)
 }
 
 type resData = map[string]interface{}

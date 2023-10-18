@@ -1,13 +1,15 @@
-package main
+package scrapper
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v2"
+	"os"
 	"time"
 
 	az "github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	container "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v2"
 	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v2"
 	resource "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"golang.org/x/sync/errgroup"
@@ -91,80 +93,10 @@ func (s *Scrapper) Run() error {
 		return s.ListDiskEncryptionSets(ctx, consoleHandler[compute.DiskEncryptionSet])
 	})
 	g.Go(func() error {
-		return s.ListClusters(ctx, consoleHandler[armcontainerservice.ManagedCluster])
+		return s.ListClusters(ctx, consoleHandler[container.ManagedCluster])
 	})
 
 	return g.Wait()
-}
-
-func (s *Scrapper) ListResourceGroups(ctx context.Context, pageHandler pageHandler[resource.ResourceGroup]) error {
-	pager := s.resourceGroupClient.NewListPager(nil)
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to advance page: %w", err)
-		}
-		if err = processPage(page.Value, err, pageHandler); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Scrapper) ListProviders(ctx context.Context, pageHandler pageHandler[resource.Provider]) error {
-	pager := s.providersClient.NewListPager(nil)
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to advance page: %w", err)
-		}
-		if err = processPage(page.Value, err, pageHandler); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Scrapper) ListVirtualNetworks(ctx context.Context, pageHandler pageHandler[network.VirtualNetwork]) error {
-	pager := s.networksClient.NewListAllPager(nil)
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to advance page: %w", err)
-		}
-		if err = processPage(page.Value, err, pageHandler); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Scrapper) ListDiskEncryptionSets(ctx context.Context, pageHandler pageHandler[compute.DiskEncryptionSet]) error {
-	pager := s.diskEncryptionSetClient.NewListPager(nil)
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to advance page: %w", err)
-		}
-		if err = processPage(page.Value, err, pageHandler); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Scrapper) ListClusters(ctx context.Context, pageHandler pageHandler[armcontainerservice.ManagedCluster]) error {
-	pager := s.clusterClient.NewListPager(nil)
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to advance page: %w", err)
-		}
-		if err = processPage(page.Value, err, pageHandler); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func processPage[T any](page []*T, err error, pageHandler pageHandler[T]) error {
@@ -174,4 +106,8 @@ func processPage[T any](page []*T, err error, pageHandler pageHandler[T]) error 
 		}
 	}
 	return nil
+}
+
+func consoleHandler[T any](t *T) error {
+	return json.NewEncoder(os.Stdout).Encode(t)
 }
