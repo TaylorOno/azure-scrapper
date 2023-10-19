@@ -1,6 +1,7 @@
-package scrapper
+package scrapper_test
 
 import (
+	. "azure-scrapper/internal/scrapper"
 	"context"
 	"errors"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v2"
 	resource "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewScraper(t *testing.T) {
@@ -118,14 +120,28 @@ func TestScrapper_Run(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		options := []OptionsFunc{
+			WithResourceGroupsFactory(func(subscriptionID string, credential az.TokenCredential, options *arm.ClientOptions) (ResourceGroupsPager, error) {
+				return tt.clients.resourceGroupClient, nil
+			}),
+			WithProvidersFactory(func(subscriptionID string, credential az.TokenCredential, options *arm.ClientOptions) (ProvidersPager, error) {
+				return tt.clients.providersClient, nil
+			}),
+			WithVirtualNetworksFactory(func(subscriptionID string, credential az.TokenCredential, options *arm.ClientOptions) (VirtualNetworkPager, error) {
+				return tt.clients.networksClient, nil
+			}),
+			WithDiskEncryptionSetFactory(func(subscriptionID string, credential az.TokenCredential, options *arm.ClientOptions) (DiskEncryptionSetPager, error) {
+				return tt.clients.diskEncryptionSetsClient, nil
+			}),
+			WithClusterFactory(func(subscriptionID string, credential az.TokenCredential, options *arm.ClientOptions) (ClusterPager, error) {
+				return tt.clients.clusterClient, nil
+			}),
+		}
+
+		s, err := NewScrapper(nil, "nil", options...)
+		require.NoError(t, err)
+
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Scrapper{
-				resourceGroupClient:     tt.clients.resourceGroupClient,
-				providersClient:         tt.clients.providersClient,
-				networksClient:          tt.clients.networksClient,
-				diskEncryptionSetClient: tt.clients.diskEncryptionSetsClient,
-				clusterClient:           tt.clients.clusterClient,
-			}
 			tt.want(t, s.Run())
 		})
 	}

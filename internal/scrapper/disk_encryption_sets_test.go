@@ -1,6 +1,7 @@
-package scrapper
+package scrapper_test
 
 import (
+	. "azure-scrapper/internal/scrapper"
 	"context"
 	"errors"
 
